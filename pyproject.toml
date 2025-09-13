@@ -12,13 +12,14 @@ fastapi = "^0.116.0"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 aiogram = "^3.7.0"
 sqlmodel = "^0.0.24"
-psycopg-binary = "^3.1.18"
+psycopg = "^3.2.9"
 redis = "^6.4.0"
 alembic = "^1.13.1"
 pydantic-settings = "^2.3.0"
 python-jose = {extras = ["cryptography"], version = "^3.3.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 slowapi = "^0.1.9"
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
@@ -59,3 +60,9 @@ asyncio_mode = "auto"
 
 [tool.coverage.run]
 omit = ["*/tests/*"]
+
+# --- Bandit Configuration ---
+[tool.bandit]
+# Исключаем проверку B104 (hardcoded_bind_all_interfaces) для всего проекта.
+# Это приемлемо для приложений, предназначенных для запуска в Docker.
+skips = ["B104"]
