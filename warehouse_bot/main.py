@@ -6,25 +6,36 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.redis import RedisStorage
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
 
 from warehouse_bot.core.config import settings
 from warehouse_bot.db.session import AsyncSessionFactory
-from warehouse_bot.handlers import commands
+from warehouse_bot.handlers import commands, product_management
 from warehouse_bot.middlewares.db_session import DbSessionMiddleware
-
-# --- Глобальные объекты ---
-bot = Bot(token=settings.BOT_TOKEN)
-dp = Dispatcher()
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Контекстный менеджер для управления жизненным циклом приложения.
     """
     print("--- LIFESPAN START ---")
+
+    print("0. Initializing Bot, Dispatcher, Redis connection and FSM storage...")
+    bot = Bot(token=settings.BOT_TOKEN)
+    redis_client = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT)
+    storage = RedisStorage(redis=redis_client)
+    dp = Dispatcher(storage=storage)
+
+    # Сохраняем экземпляры в app.state для доступа в хендлерах
+    app.state.bot = bot
+    app.state.dp = dp
+    app.state.redis = redis_client
+    print("-> Bot, Dispatcher, Redis and FSM Storage initialized.")
+
     print("1. Deleting old webhook...")
     await bot.delete_webhook(drop_pending_updates=True)
     print("-> Old webhook deleted.")
@@ -32,6 +43,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     print("2. Registering middlewares and routers...")
     dp.update.middleware(DbSessionMiddleware(session_pool=AsyncSessionFactory))
     dp.include_router(commands.router)
+    dp.include_router(product_management.router)
     print("-> Middlewares and routers registered.")
 
     print(f"3. Setting new webhook to: {settings.webhook_url}")
@@ -44,8 +56,9 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     print("--- LIFESPAN SHUTDOWN ---")
-    await bot.delete_webhook()
-    await bot.session.close()
+    await app.state.bot.delete_webhook()
+    await app.state.bot.session.close()
+    await app.state.redis.close()
     print("--- LIFESPAN SHUTDOWN COMPLETE ---")
 
 
@@ -58,26 +71,17 @@ async def webhook_handler(request: Request, token: str) -> Response:
     """
     Обработчик вебхуков от Telegram.
     """
-    # --- СУПЕР-ОТЛАДКА ---
-    # Получаем токен из заголовка, который прислал Telegram
-    telegram_secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-
-    # Выводим в консоль оба значения для сравнения
-    print("--- DEBUG: Comparing secrets ---")
-    print(f"Secret FROM TELEGRAM: '{telegram_secret_token}'")
-    print(f"Secret FROM .ENV FILE: '{settings.WEBHOOK_SECRET}'")
-    print(f"Are they equal? -> {telegram_secret_token == settings.WEBHOOK_SECRET}")
-    print("------------------------------")
-    # --- КОНЕЦ СУПЕР-ОТЛАДКИ ---
-
     if token != settings.BOT_TOKEN:
         return JSONResponse(content={"error": "Invalid token"}, status_code=403)
 
+    telegram_secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
     if telegram_secret_token != settings.WEBHOOK_SECRET:
         return JSONResponse(content={"error": "Invalid secret token"}, status_code=403)
 
     try:
         update = await request.json()
+        dp: Dispatcher = request.app.state.dp
+        bot: Bot = request.app.state.bot
         await dp.feed_webhook_update(bot=bot, update=update)
     except Exception:
         logging.exception("!!! Critical error in webhook handler !!!")

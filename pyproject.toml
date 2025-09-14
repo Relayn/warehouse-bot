@@ -7,12 +7,12 @@ readme = "README.md"
 packages = [{include = "warehouse_bot"}]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 fastapi = "^0.116.0"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 aiogram = "^3.7.0"
 sqlmodel = "^0.0.24"
-psycopg = "^3.2.9"
+psycopg = "^3.2.10"
 redis = "^6.4.0"
 alembic = "^1.13.1"
 pydantic-settings = "^2.3.0"
@@ -24,6 +24,7 @@ asyncpg = "^0.30.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
 pytest-cov = "^6.2.0"
+pytest-asyncio = "^0.23.7"
 httpx = "^0.28.0"
 pre-commit = "^4.3.0"
 ruff = "^0.12.0"
@@ -32,6 +33,7 @@ bandit = "^1.7.9"
 radon = "^6.0.1"
 safety = "^3.2.3"
 pip-audit = "^2.7.3"
+aiosqlite = "^0.21.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -61,8 +63,8 @@ asyncio_mode = "auto"
 [tool.coverage.run]
 omit = ["*/tests/*"]
 
-# --- Bandit Configuration ---
 [tool.bandit]
-# Исключаем проверку B104 (hardcoded_bind_all_interfaces) для всего проекта.
-# Это приемлемо для приложений, предназначенных для запуска в Docker.
-skips = ["B104"]
+exclude_dirs = [".venv"]
+# B104 - `hardcoded_bind_all_interfaces` - Игнорируем, так как в Docker это норма
+# B101 - `assert_used` - Игнорируем, так как assert используется только в тестах
+skips = ["B104", "B101"]
